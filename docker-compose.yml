@@ -1,0 +1,298 @@
+services:
+  gluetun:
+    image: qmcgaw/gluetun:latest
+    container_name: gluetun
+    cap_add:
+      - NET_ADMIN
+    devices:
+      - /dev/net/tun:/dev/net/tun
+    ports:
+      - "8888:8888/tcp" # HTTP proxy
+      - "8388:8388/tcp" # Shadowsocks
+      - "8388:8388/udp" # Shadowsocks
+      - "8989:8989"     # Sonarr
+      - "7878:7878"     # Radarr
+      - "9696:9696"     # Prowlarr
+      - "8191:8191"     # FlareSolverr
+      - "8080:8080"     # qBittorrent
+      - "8686:8686"     # Lidarr
+    volumes:
+      - ./gluetun:/gluetun
+    environment:
+      - VPN_SERVICE_PROVIDER=${VPN_SERVICE_PROVIDER:-custom}
+      - VPN_TYPE=${VPN_TYPE:-openvpn}
+      - OPENVPN_USER=${OPENVPN_USER}
+      - OPENVPN_PASSWORD=${OPENVPN_PASSWORD}
+      - OPENVPN_CUSTOM_CONFIG=/gluetun/config.ovpn
+      - TZ=${TZ:-Europe/Paris}
+      - FIREWALL_OUTBOUND_SUBNETS=192.168.0.0/16,172.16.0.0/12,10.0.0.0/8
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "https://www.google.com"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+
+  # ========================================
+  # DOWNLOAD CLIENT
+  # ========================================
+  qbittorrent:
+    image: lscr.io/linuxserver/qbittorrent:latest
+    container_name: qbittorrent
+    network_mode: "service:gluetun"
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Europe/Paris}
+      - WEBUI_PORT=8080
+    volumes:
+      - ./qbittorrent/config:/config
+      - ./downloads:/downloads
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ========================================
+  # INDEXERS & SEARCH
+  # ========================================
+  prowlarr:
+    image: lscr.io/linuxserver/prowlarr:latest
+    container_name: prowlarr
+    network_mode: "service:gluetun"
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Europe/Paris}
+    volumes:
+      - ./prowlarr/config:/config
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    restart: unless-stopped
+
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: flaresolverr
+    network_mode: "service:gluetun"
+    environment:
+      - LOG_LEVEL=${LOG_LEVEL:-info}
+      - LOG_HTML=${LOG_HTML:-false}
+      - TZ=${TZ:-Europe/Paris}
+    depends_on:
+      gluetun:
+        condition: service_healthy
+    restart: unless-stopped
+
+  # ========================================
+  # MEDIA MANAGEMENT - TV SHOWS
+  # ========================================
+  sonarr:
+    image: lscr.io/linuxserver/sonarr:latest
+    container_name: sonarr
+    network_mode: "service:gluetun"
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Europe/Paris}
+    volumes:
+      - ./sonarr/config:/config
+      - ./media/tvshows:/tv
+      - ./downloads:/downloads
+    depends_on:
+      gluetun:
+        condition: service_healthy
+      prowlarr:
+        condition: service_started
+    restart: unless-stopped
+
+  # ========================================
+  # MEDIA MANAGEMENT - MOVIES
+  # ========================================
+  radarr:
+    image: lscr.io/linuxserver/radarr:latest
+    container_name: radarr
+    network_mode: "service:gluetun"
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Europe/Paris}
+    volumes:
+      - ./radarr/config:/config
+      - ./media/movies:/movies
+      - ./downloads:/downloads
+    depends_on:
+      gluetun:
+        condition: service_healthy
+      prowlarr:
+        condition: service_started
+    restart: unless-stopped
+
+  # ========================================
+  # MEDIA SERVER
+  # ========================================
+  jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Europe/Paris}
+      - JELLYFIN_PublishedServerUrl=${JELLYFIN_PUBLISHED_SERVER_URL:-http://localhost:8096}
+    volumes:
+      - ./jellyfin/config:/config
+      - ./media/tvshows:/data/tvshows
+      - ./media/movies:/data/movies
+      - ./media/music:/data/music
+    ports:
+      - "8096:8096"
+      - "8920:8920"     # HTTPS
+      - "7359:7359/udp" # Auto-discovery
+      - "1900:1900/udp" # DLNA
+    restart: unless-stopped
+
+  # ========================================
+  # REQUEST MANAGEMENT
+  # ========================================
+  jellyseerr:
+    image: fallenbagel/jellyseerr:latest
+    container_name: jellyseerr
+    environment:
+      - LOG_LEVEL=info
+      - TZ=${TZ:-Europe/Paris}
+    ports:
+      - "5055:5055"
+    volumes:
+      - ./jellyseerr/config:/app/config
+    depends_on:
+      - jellyfin
+    restart: unless-stopped
+
+  # ========================================
+  # SUBTITLES
+  # ========================================
+  bazarr:
+    image: lscr.io/linuxserver/bazarr:latest
+    container_name: bazarr
+    environment:
+      - PUID=${PUID:-1000}
+      - PGID=${PGID:-1000}
+      - TZ=${TZ:-Europe/Paris}
+    volumes:
+      - ./bazarr/config:/config
+      - ./media/movies:/movies
+      - ./media/tvshows:/tv
+    ports:
+      - "6767:6767"
+    depends_on:
+      - sonarr
+      - radarr
+    restart: unless-stopped
+
+  # ========================================
+  # QUALITY PROFILES MANAGEMENT
+  # ========================================
+  profilarr:
+    image: santiagosayshey/profilarr:latest
+    container_name: profilarr
+    environment:
+      - TZ=${TZ:-Europe/Paris}
+    ports:
+      - "6868:6868"
+    volumes:
+      - ./profilarr/config:/config
+    depends_on:
+      - sonarr
+      - radarr
+    restart: unless-stopped
+
+  # ========================================
+  # TRASH GUIDES SYNC
+  # ========================================
+  recyclarr:
+    image: ghcr.io/recyclarr/recyclarr:latest
+    container_name: recyclarr
+    user: ${PUID:-1000}:${PGID:-1000}
+    environment:
+      - TZ=${TZ:-Europe/Paris}
+      - CRON_SCHEDULE=${RECYCLARR_CRON_SCHEDULE:-@daily}
+      - SONARR_API_KEY=${SONARR_API_KEY}
+      - RADARR_API_KEY=${RADARR_API_KEY}
+    volumes:
+      - ./recyclarr/config:/config
+    depends_on:
+      - sonarr
+      - radarr
+    restart: unless-stopped
+
+  # ========================================
+  # ARCHIVE EXTRACTION
+  # ========================================
+  unpackerr:
+    image: golift/unpackerr:latest
+    container_name: unpackerr
+    environment:
+      - TZ=${TZ:-Europe/Paris}
+      - UN_SONARR_0_URL=http://gluetun:8989
+      - UN_SONARR_0_API_KEY=${SONARR_API_KEY}
+      - UN_RADARR_0_URL=http://gluetun:7878
+      - UN_RADARR_0_API_KEY=${RADARR_API_KEY}
+      - UN_LIDARR_0_URL=http://gluetun:8686
+      - UN_LIDARR_0_API_KEY=${LIDARR_API_KEY}
+    volumes:
+      - ./downloads:/downloads
+    restart: unless-stopped
+
+  # ========================================
+  # DASHBOARD
+  # ========================================
+  homarr:
+    image: ghcr.io/ajnart/homarr:latest
+    container_name: homarr
+    environment:
+      - TZ=${TZ:-Europe/Paris}
+    volumes:
+      - ./homarr/configs:/app/data/configs
+      - ./homarr/icons:/app/public/icons
+      - ./homarr/data:/data
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    ports:
+      - "7575:7575"
+    restart: unless-stopped
+
+  # ========================================
+  # DOCKER MANAGEMENT
+  # ========================================
+  portainer:
+    image: portainer/portainer-ce:latest
+    container_name: portainer
+    environment:
+      - TZ=${TZ:-Europe/Paris}
+    volumes:
+      - ./portainer/data:/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    ports:
+      - "9000:9000"
+      - "9443:9443"
+    restart: unless-stopped
+
+  # ========================================
+  # AUTO-UPDATE
+  # ========================================
+  watchtower:
+    image: containrrr/watchtower:latest
+    container_name: watchtower
+    environment:
+      - TZ=${TZ:-Europe/Paris}
+      - WATCHTOWER_CLEANUP=true
+      - WATCHTOWER_INCLUDE_RESTARTING=true
+      - WATCHTOWER_SCHEDULE=0 0 4 * * *
+      - WATCHTOWER_NOTIFICATIONS=${WATCHTOWER_NOTIFICATIONS:-shoutrrr}
+      - WATCHTOWER_NOTIFICATION_URL=${WATCHTOWER_NOTIFICATION_URL}
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+    restart: unless-stopped
+
+networks:
+  default:
+    name: media-network
