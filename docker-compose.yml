@@ -57,7 +57,7 @@ services:
   # INDEXERS & SEARCH
   # ========================================
   prowlarr:
-    image: lscr.io/linuxserver/prowlarr:latest
+    image: ghcr.io/prowlarr/prowlarr:latest
     container_name: prowlarr
     network_mode: "service:gluetun"
     environment:
@@ -71,24 +71,11 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
-    container_name: flaresolverr
-    network_mode: "service:gluetun"
-    environment:
-      - LOG_LEVEL=${LOG_LEVEL:-info}
-      - LOG_HTML=${LOG_HTML:-false}
-      - TZ=${TZ:-Europe/Paris}
-    depends_on:
-      gluetun:
-        condition: service_healthy
-    restart: unless-stopped
-
   # ========================================
   # MEDIA MANAGEMENT - TV SHOWS
   # ========================================
   sonarr:
-    image: lscr.io/linuxserver/sonarr:latest
+    image: ghcr.io/hotio/sonarr:latest
     container_name: sonarr
     network_mode: "service:gluetun"
     environment:
@@ -110,7 +97,7 @@ services:
   # MEDIA MANAGEMENT - MOVIES
   # ========================================
   radarr:
-    image: lscr.io/linuxserver/radarr:latest
+    image: ghcr.io/hotio/radarr:latest
     container_name: radarr
     network_mode: "service:gluetun"
     environment:
@@ -132,7 +119,7 @@ services:
   # MEDIA SERVER
   # ========================================
   jellyfin:
-    image: lscr.io/linuxserver/jellyfin:latest
+    image: ghcr.io/hotio/jellyfin:latest
     container_name: jellyfin
     environment:
       - PUID=${PUID:-1000}
@@ -166,27 +153,6 @@ services:
       - ./jellyseerr/config:/app/config
     depends_on:
       - jellyfin
-    restart: unless-stopped
-
-  # ========================================
-  # SUBTITLES
-  # ========================================
-  bazarr:
-    image: lscr.io/linuxserver/bazarr:latest
-    container_name: bazarr
-    environment:
-      - PUID=${PUID:-1000}
-      - PGID=${PGID:-1000}
-      - TZ=${TZ:-Europe/Paris}
-    volumes:
-      - ./bazarr/config:/config
-      - ./media/movies:/movies
-      - ./media/tvshows:/tv
-    ports:
-      - "6767:6767"
-    depends_on:
-      - sonarr
-      - radarr
     restart: unless-stopped
 
   # ========================================
@@ -276,22 +242,6 @@ services:
       - "9443:9443"
     restart: unless-stopped
 
-  # ========================================
-  # AUTO-UPDATE
-  # ========================================
-  watchtower:
-    image: containrrr/watchtower:latest
-    container_name: watchtower
-    environment:
-      - TZ=${TZ:-Europe/Paris}
-      - WATCHTOWER_CLEANUP=true
-      - WATCHTOWER_INCLUDE_RESTARTING=true
-      - WATCHTOWER_SCHEDULE=0 0 4 * * *
-      - WATCHTOWER_NOTIFICATIONS=${WATCHTOWER_NOTIFICATIONS:-shoutrrr}
-      - WATCHTOWER_NOTIFICATION_URL=${WATCHTOWER_NOTIFICATION_URL}
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    restart: unless-stopped
 
 networks:
   default:
