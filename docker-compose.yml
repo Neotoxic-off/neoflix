@@ -57,7 +57,7 @@ services:
   # INDEXERS & SEARCH
   # ========================================
   prowlarr:
-    image: ghcr.io/prowlarr/prowlarr:latest
+    image: ghcr.io/hotio/prowlarr:latest
     container_name: prowlarr
     network_mode: "service:gluetun"
     environment:
